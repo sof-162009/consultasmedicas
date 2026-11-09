@@ -1,0 +1,14 @@
+package com.universidad.consultasmedicas.config;
+import com.universidad.consultasmedicas.repository.UsuarioRepository;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.context.annotation.*; import org.springframework.core.annotation.Order;
+import org.springframework.security.config.Customizer; import org.springframework.security.config.annotation.web.builders.HttpSecurity; import org.springframework.security.core.userdetails.*;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder; import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain; import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
+@Configuration public class SecurityConfig {
+ @Bean PasswordEncoder passwordEncoder(){return new BCryptPasswordEncoder();}
+ @Bean UserDetailsService userDetailsService(UsuarioRepository repo){return name->repo.findByUsername(name).map(u->User.withUsername(u.getUsername()).password(u.getPassword()).roles(u.getRol().getNombre()).build()).orElseThrow(()->new UsernameNotFoundException(name));}
+ @Bean AuthenticationSuccessHandler successHandler(){return (req,res,auth)->{String r=auth.getAuthorities().iterator().next().getAuthority();res.sendRedirect(switch(r){case "ROLE_ADMINISTRADOR"->"/admin/dashboard";case "ROLE_MEDICO"->"/medico/dashboard";default->"/paciente/dashboard";});};}
+ @Bean @Order(1) SecurityFilterChain api(HttpSecurity http)throws Exception{http.securityMatcher("/api/**").csrf(c->c.disable()).sessionManagement(s->s.sessionCreationPolicy(org.springframework.security.config.http.SessionCreationPolicy.STATELESS)).authorizeHttpRequests(a->a.requestMatchers("/api/admin/**").hasRole("ADMINISTRADOR").requestMatchers("/api/medico/**").hasRole("MEDICO").requestMatchers("/api/paciente/**").hasRole("PACIENTE").anyRequest().authenticated()).httpBasic(Customizer.withDefaults()).exceptionHandling(e->e.authenticationEntryPoint((r,s,x)->s.sendError(HttpServletResponse.SC_UNAUTHORIZED)).accessDeniedHandler((r,s,x)->s.sendError(HttpServletResponse.SC_FORBIDDEN)));return http.build();}
+ @Bean @Order(2) SecurityFilterChain web(HttpSecurity http,AuthenticationSuccessHandler success)throws Exception{http.authorizeHttpRequests(a->a.requestMatchers("/login","/css/**","/js/**","/error","/access-denied","/swagger-ui.html","/swagger-ui/**","/v3/api-docs/**").permitAll().requestMatchers("/admin/**").hasRole("ADMINISTRADOR").requestMatchers("/medico/**").hasRole("MEDICO").requestMatchers("/paciente/**").hasRole("PACIENTE").anyRequest().authenticated()).formLogin(f->f.loginPage("/login").successHandler(success).permitAll()).logout(l->l.logoutSuccessUrl("/login?logout").permitAll()).exceptionHandling(e->e.accessDeniedPage("/access-denied"));return http.build();}
+}
